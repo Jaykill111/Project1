@@ -4,6 +4,15 @@ Premier League Corner Prediction API
 """
 import sys
 import os
+import logging
+
+# Setup logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
+
 # Add api directory to path for imports
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
@@ -254,8 +263,14 @@ def load_models():
         except Exception as e:
             print(f"Error loading goals regression model {latest_reg}: {e}")
 
-# Load models on startup
-load_models()
+# Load models on startup - wrap in try/except to prevent crash
+try:
+    logger.info("Loading models...")
+    load_models()
+    logger.info(f"Models loaded: {len(models)} corner models, {len(goals_models)} goals models")
+except Exception as e:
+    logger.error(f"Failed to load models on startup: {e}", exc_info=True)
+    logger.warning("Running in degraded mode without models")
 
 
 def fetch_data():
