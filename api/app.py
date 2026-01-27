@@ -850,6 +850,11 @@ def prepare_charts_data(df, home_team, away_team, predictions):
 # API ROUTES
 # =============================================================================
 
+@app.route('/health')
+def health_root():
+    """Root health check endpoint for Railway."""
+    return jsonify({'status': 'ok'}), 200
+
 @app.route('/api/health')
 def health():
     """Health check endpoint."""
