@@ -1,0 +1,10 @@
+[build]
+builder = "nixpacks"
+
+[deploy]
+startCommand = "cd api && uv run gunicorn app:app"
+healthcheckPath = "/api/health"
+healthcheckTimeout = 300
+
+[nixpacks]
+providers = ["python"]

@@ -1,0 +1,66 @@
+# Environment variables (contains API keys)
+.env
+api/.env
+.env.*
+
+# Python tooling and caches
+.python-version
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+.cache/
+
+# Python
+__pycache__/
+*.py[cod]
+*.so
+.venv/
+venv/
+.uv/
+pip-wheel-metadata/
+build/
+dist/
+site/
+htmlcov/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Ignore models - downloaded from HuggingFace at runtime
+api/models/
+models/
+*.pkl
+*.zip
+.vercel
+
+# Notebooks and outputs
+.ipynb_checkpoints/
+*.ipynb
+
+
+# Frontend
+node_modules/
+frontend/node_modules/
+frontend/.next/
+frontend/.parcel-cache/
+frontend/dist/
+
+# Temp/data dumps
+data/
+datasets/
+downloads/
+tmp/
+*.sqlite*
+*.db
