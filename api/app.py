@@ -996,9 +996,13 @@ def get_teams():
             return jsonify({'error': 'Failed to fetch data'}), 500
 
         teams = sorted(set(df['HomeTeam'].unique()) | set(df['AwayTeam'].unique()))
-        response = jsonify({'teams': teams})
+        response = jsonify({
+            'teams': teams,
+            'league': CURRENT_LEAGUE  # Include league in response for cache validation
+        })
         response.cache_control.max_age = 600  # Cache for 10 minutes
         response.cache_control.public = True
+        response.headers['Vary'] = 'Cookie'  # Make cache league-aware
         return response
     except Exception as e:
         return jsonify({'error': str(e)}), 500

@@ -812,7 +812,9 @@
         setResult(null);
         
         try {
-          const res = await fetch(`${API_BASE}/api/teams`);
+          // Add timestamp to bypass HTTP cache after league change
+          const cacheBuster = `?t=${Date.now()}`;
+          const res = await fetch(`${API_BASE}/api/teams${cacheBuster}`);
           const data = await res.json();
           setTeams(data.teams || []);
         } catch (err) {
@@ -856,10 +858,13 @@
           setAwayTeam("");
           setResult(null);
           
-          const teamsRes = await fetch(`${API_BASE}/api/teams`);
+          // Add cache buster to force fresh data
+          const cacheBuster = `?t=${Date.now()}`;
+          const teamsRes = await fetch(`${API_BASE}/api/teams${cacheBuster}`);
           console.log(`[DEBUG] /api/teams response status: ${teamsRes.status}`);
           const teamsData = await teamsRes.json();
           console.log(`[DEBUG] /api/teams data:`, teamsData);
+          console.log(`[DEBUG] Backend league: ${teamsData.league}, Expected: ${leagueCode}`);
           setTeams(teamsData.teams || []);
           setTeamsLoading(false);
           console.log(`[DEBUG] Teams updated:`, teamsData.teams?.length, "teams loaded");
