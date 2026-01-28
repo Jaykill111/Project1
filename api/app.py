@@ -53,6 +53,7 @@ CORS(app, resources={r"/api/*": {
         "https://corner.qnguyen3.dev",
         "https://project1-six-flame.vercel.app",
         "https://myproject-woad-theta.vercel.app",
+        "https://*.vercel.app",  # Accept any Vercel deployment
         "http://localhost:3000",
         "http://localhost:5173",
         "http://localhost:8000",
