@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Production API Test</title>
+    <style>
+        body { font-family: monospace; background: #1a1a1a; color: #0f0; padding: 20px; }
+        .test { border: 1px solid #0f0; margin: 10px 0; padding: 10px; }
+        .pass { background: #001a00; }
+        .fail { background: #1a0000; }
+        .pending { background: #1a1a00; }
+        pre { overflow-x: auto; white-space: pre-wrap; }
+        button { background: #0f0; color: #000; padding: 10px 20px; margin: 5px; cursor: pointer; }
+    </style>
+</head>
+<body>
+    <h1>🚀 Production API Prediction Test Suite</h1>
+    
+    <div>
+        <button onclick="testAllLeagues()">Test All Leagues</button>
+        <button onclick="clearResults()">Clear Results</button>
+    </div>
+    
+    <div id="results"></div>
+
+    <script>
+const API_BASE = "https://web-production-a7244.up.railway.app";
+
+const testCases = [
+    { league: "E0", name: "Premier League", team1: "Arsenal", team2: "Manchester United" },
+    { league: "SP1", name: "La Liga", team1: "Barcelona", team2: "Real Madrid" },
+    { league: "I1", name: "Serie A", team1: "Juventus", team2: "Napoli" },
+    { league: "D1", name: "Bundesliga", team1: "Bayern Munich", team2: "Borussia Dortmund" },
+    { league: "F1", name: "Ligue 1", team1: "Paris Saint-Germain", team2: "Olympique Marseille" },
+];
+
+function log(msg, level = 'info') {
+    console.log(`[${level.toUpperCase()}] ${msg}`);
+}
+
+function addResult(html) {
+    document.getElementById('results').innerHTML += html;
+}
+
+function clearResults() {
+    document.getElementById('results').innerHTML = '';
+}
+
+async function switchLeague(leagueCode) {
+    try {
+        const res = await fetch(`${API_BASE}/api/league/select`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ league_code: leagueCode })
+        });
+        const data = await res.json();
+        return { ok: res.ok, data };
+    } catch (e) {
+        return { ok: false, error: e.message };
+    }
+}
+
+async function makePrediction(homeTeam, awayTeam) {
+    try {
+        const res = await fetch(`${API_BASE}/api/predict/all`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ home_team: homeTeam, away_team: awayTeam })
+        });
+        const data = await res.json();
+        return { ok: res.ok, status: res.status, data };
+    } catch (e) {
+        return { ok: false, error: e.message };
+    }
+}
+
+function validateResponse(data) {
+    const issues = [];
+    
+    // Check structure
+    if (!data.match) issues.push("Missing 'match' field");
+    if (!data.corners) issues.push("Missing 'corners' field");
+    if (!data.goals) issues.push("Missing 'goals' field");
+    if (!data.statistics) issues.push("Missing 'statistics' field");
+    
+    // Check corners predictions
+    if (data.corners?.predictions) {
+        const thresholds = Object.keys(data.corners.predictions);
+        if (thresholds.length !== 5) issues.push(`Expected 5 corner thresholds, got ${thresholds.length}`);
+        for (const [th, pred] of Object.entries(data.corners.predictions)) {
+            if (!pred.prediction) issues.push(`Threshold ${th}: missing prediction`);
+            if (pred.probability === undefined) issues.push(`Threshold ${th}: missing probability`);
+        }
+    }
+    
+    // Check goals predictions
+    if (data.goals?.predictions) {
+        const thresholds = Object.keys(data.goals.predictions);
+        if (thresholds.length !== 4) issues.push(`Expected 4 goals thresholds, got ${thresholds.length}`);
+    }
+    
+    // Check statistics
+    if (data.statistics?.home_team) {
+        if (data.statistics.home_team.matches === undefined) issues.push("Missing home_team.matches");
+        if (data.statistics.home_team.avg_corners === undefined) issues.push("Missing home_team.avg_corners");
+    }
+    
+    if (data.statistics?.away_team) {
+        if (data.statistics.away_team.matches === undefined) issues.push("Missing away_team.matches");
+        if (data.statistics.away_team.avg_corners === undefined) issues.push("Missing away_team.avg_corners");
+    }
+    
+    return issues;
+}
+
+async function testLeague(testCase) {
+    const { league, name, team1, team2 } = testCase;
+    let html = `<div class="test pending">`;
+    html += `<h3>🔄 Testing ${league}: ${name}</h3>`;
+    
+    // Switch league
+    log(`Switching to ${league}...`);
+    const switchRes = await switchLeague(league);
+    if (!switchRes.ok) {
+        html += `<div class="fail">❌ League switch failed: ${switchRes.error || switchRes.data.error}</div>`;
+        html += `</div>`;
+        addResult(html);
+        return false;
+    }
+    html += `<div class="pass">✅ League switched to ${switchRes.data.league.name}</div>`;
+    
+    // Wait a bit
+    await new Promise(r => setTimeout(r, 500));
+    
+    // Make prediction
+    log(`Making prediction: ${team1} vs ${team2}`);
+    const predRes = await makePrediction(team1, team2);
+    
+    if (!predRes.ok) {
+        html += `<div class="fail">❌ Prediction failed (${predRes.status}): ${predRes.data?.error || predRes.error}</div>`;
+        html += `</div>`;
+        addResult(html);
+        return false;
+    }
+    
+    html += `<div class="pass">✅ Prediction request successful (${predRes.status})</div>`;
+    
+    // Validate response
+    const issues = validateResponse(predRes.data);
+    if (issues.length > 0) {
+        html += `<div class="fail">❌ Response validation issues:</div>`;
+        html += `<ul>`;
+        issues.forEach(issue => html += `<li>${issue}</li>`);
+        html += `</ul>`;
+    } else {
+        html += `<div class="pass">✅ Response structure valid</div>`;
+    }
+    
+    // Show details
+    html += `<details><summary>Response Details</summary><pre>${JSON.stringify(predRes.data, null, 2)}</pre></details>`;
+    
+    // Check data
+    const stats = predRes.data.statistics;
+    const corners = predRes.data.corners.predictions;
+    const goals = predRes.data.goals.predictions;
+    
+    html += `<h4>📊 Statistics:</h4>`;
+    html += `<table border="1" style="color: #0f0; border-color: #0f0;">`;
+    html += `<tr><th>Team</th><th>Matches</th><th>Avg Corners</th><th>Avg Goals</th></tr>`;
+    html += `<tr><td>${stats.home_team.name || 'Home'}</td><td>${stats.home_team.matches}</td><td>${stats.home_team.avg_corners?.toFixed(2)}</td><td>${stats.home_team.avg_goals?.toFixed(2)}</td></tr>`;
+    html += `<tr><td>${stats.away_team.name || 'Away'}</td><td>${stats.away_team.matches}</td><td>${stats.away_team.avg_corners?.toFixed(2)}</td><td>${stats.away_team.avg_goals?.toFixed(2)}</td></tr>`;
+    html += `</table>`;
+    
+    html += `<h4>⚽ Corners Predictions:</h4>`;
+    html += `<table border="1" style="color: #0f0; border-color: #0f0;">`;
+    html += `<tr><th>Threshold</th><th>Prediction</th><th>Probability</th></tr>`;
+    Object.entries(corners).forEach(([th, pred]) => {
+        const color = pred.prediction === 'OVER' ? '#00ff00' : '#ff6600';
+        html += `<tr><td>O/U ${th}</td><td style="color: ${color};">${pred.prediction}</td><td>${(pred.probability * 100).toFixed(1)}%</td></tr>`;
+    });
+    html += `</table>`;
+    
+    html += `<h4>🎯 Goals Predictions:</h4>`;
+    html += `<table border="1" style="color: #0f0; border-color: #0f0;">`;
+    html += `<tr><th>Threshold</th><th>Prediction</th><th>Probability</th></tr>`;
+    Object.entries(goals).forEach(([th, pred]) => {
+        const color = pred.prediction === 'OVER' ? '#00ff00' : '#ff6600';
+        html += `<tr><td>O/U ${th}</td><td style="color: ${color};">${pred.prediction}</td><td>${(pred.probability * 100).toFixed(1)}%</td></tr>`;
+    });
+    html += `</table>`;
+    
+    html += `</div>`;
+    addResult(html);
+    return issues.length === 0;
+}
+
+async function testAllLeagues() {
+    clearResults();
+    addResult(`<div class="test pending"><h2>🚀 Starting comprehensive prediction tests...</h2></div>`);
+    
+    let passed = 0;
+    let failed = 0;
+    
+    for (const testCase of testCases) {
+        const result = await testLeague(testCase);
+        if (result) passed++; else failed++;
+        await new Promise(r => setTimeout(r, 1000));
+    }
+    
+    let summary = `<div class="test ${failed === 0 ? 'pass' : 'fail'}">`;
+    summary += `<h2>📋 SUMMARY</h2>`;
+    summary += `<p>✅ Passed: ${passed}/${testCases.length}</p>`;
+    summary += `<p>❌ Failed: ${failed}/${testCases.length}</p>`;
+    if (failed === 0) {
+        summary += `<h3 style="color: #0f0;">🎉 ALL TESTS PASSED!</h3>`;
+    }
+    summary += `</div>`;
+    addResult(summary);
+}
+
+// Auto-run on load
+window.addEventListener('load', () => {
+    console.log('Test suite ready. Click "Test All Leagues" to start.');
+    addResult(`<div class="test pending"><p>Click "Test All Leagues" button to begin testing</p></div>`);
+});
+    </script>
+</body>
+</html>
