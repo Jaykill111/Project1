@@ -787,24 +787,35 @@
             if (preferred) {
               setCurrentLeague(preferred);
               localStorage.setItem('scope_selected_league', preferred.code);
+              // Fetch teams immediately after setting league (parallel with render)
+              fetchTeamsForLeague();
             }
           })
           .catch(() => setError("Failed to load leagues"));
       }, []);
 
-      // Fetch teams when league changes
-      useEffect(() => {
-        if (!currentLeague) return;
+      // Helper to fetch teams
+      const fetchTeamsForLeague = async () => {
         setTeamsLoading(true);
         setHomeTeam("");
         setAwayTeam("");
         setResult(null);
         
-        fetch(`${API_BASE}/api/teams`)
-          .then((res) => res.json())
-          .then((data) => setTeams(data.teams || []))
-          .catch(() => setError("Failed to load teams"))
-          .finally(() => setTeamsLoading(false));
+        try {
+          const res = await fetch(`${API_BASE}/api/teams`);
+          const data = await res.json();
+          setTeams(data.teams || []);
+        } catch (err) {
+          setError("Failed to load teams");
+        } finally {
+          setTeamsLoading(false);
+        }
+      };
+
+      // Fetch teams when league changes
+      useEffect(() => {
+        if (!currentLeague) return;
+        fetchTeamsForLeague();
       }, [currentLeague]);
 
       // Handle league selection
