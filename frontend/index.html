@@ -775,7 +775,7 @@
 
         fetch(`${API_BASE}/api/leagues`)
           .then((res) => res.json())
-          .then((data) => {
+          .then(async (data) => {
             const availableLeagues = data.leagues || [];
             setLeagues(availableLeagues);
 
@@ -787,7 +787,17 @@
             if (preferred) {
               setCurrentLeague(preferred);
               localStorage.setItem('scope_selected_league', preferred.code);
-              // Fetch teams immediately after setting league (parallel with render)
+              
+              // If stored league differs from backend current, switch backend first
+              if (storedLeague && storedLeague !== data.current) {
+                await fetch(`${API_BASE}/api/league/select`, {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ league_code: storedLeague }),
+                });
+              }
+              
+              // Now fetch teams (backend is synced)
               fetchTeamsForLeague();
             }
           })
@@ -812,11 +822,7 @@
         }
       };
 
-      // Fetch teams when league changes
-      useEffect(() => {
-        if (!currentLeague) return;
-        fetchTeamsForLeague();
-      }, [currentLeague]);
+      // Note: Teams fetching is handled manually in handleSelectLeague to avoid race conditions
 
       // Handle league selection
       const handleSelectLeague = async (leagueCode) => {
