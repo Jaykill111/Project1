@@ -790,15 +790,22 @@
               
               // If stored league differs from backend current, switch backend first
               if (storedLeague && storedLeague !== data.current) {
-                await fetch(`${API_BASE}/api/league/select`, {
+                console.log(`[DEBUG] Initial load: Switching backend from ${data.current} to ${storedLeague}`);
+                const switchRes = await fetch(`${API_BASE}/api/league/select`, {
                   method: "POST",
                   headers: { "Content-Type": "application/json" },
                   body: JSON.stringify({ league_code: storedLeague }),
                 });
+                const switchData = await switchRes.json();
+                console.log(`[DEBUG] Backend switch complete:`, switchData);
+                
+                // Wait 100ms for backend to finish reloading models
+                await new Promise(resolve => setTimeout(resolve, 100));
               }
               
               // Now fetch teams (backend is synced)
-              fetchTeamsForLeague();
+              console.log(`[DEBUG] Fetching teams for league: ${preferred.code}`);
+              await fetchTeamsForLeague();
             }
           })
           .catch(() => setError("Failed to load leagues"));
