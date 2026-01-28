@@ -5,6 +5,8 @@ Premier League Corner Prediction API
 import sys
 import os
 import logging
+from functools import wraps
+from datetime import timedelta
 
 # Setup logging
 logging.basicConfig(
@@ -30,6 +32,22 @@ from features import FEATURES, compute_features_for_match, compute_features_for_
 load_dotenv()
 
 app = Flask(__name__)
+
+# Add cache control decorator
+def add_cache_header(max_age=300):
+    """Add cache control headers to response (default 5 min)."""
+    def decorator(f):
+        @wraps(f)
+        def decorated_function(*args, **kwargs):
+            response = jsonify(f(*args, **kwargs)) if not isinstance(f(*args, **kwargs), dict) else f(*args, **kwargs)
+            if isinstance(response, dict):
+                response = jsonify(response)
+            response.cache_control.max_age = max_age
+            response.cache_control.public = True
+            return response
+        return decorated_function
+    return decorator
+
 CORS(app, resources={r"/api/*": {
     "origins": [
         "https://corner.qnguyen3.dev",
@@ -894,7 +912,7 @@ def health():
 @app.route('/api/leagues')
 def get_leagues():
     """Get list of available leagues."""
-    return jsonify({
+    response = jsonify({
         'leagues': [
             {
                 'code': code,
@@ -907,6 +925,9 @@ def get_leagues():
         ],
         'current': CURRENT_LEAGUE
     })
+    response.cache_control.max_age = 3600  # Cache for 1 hour
+    response.cache_control.public = True
+    return response
 
 
 @app.route('/api/league/current')
@@ -975,7 +996,10 @@ def get_teams():
             return jsonify({'error': 'Failed to fetch data'}), 500
 
         teams = sorted(set(df['HomeTeam'].unique()) | set(df['AwayTeam'].unique()))
-        return jsonify({'teams': teams})
+        response = jsonify({'teams': teams})
+        response.cache_control.max_age = 600  # Cache for 10 minutes
+        response.cache_control.public = True
+        return response
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
