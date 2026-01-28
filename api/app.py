@@ -284,7 +284,9 @@ except Exception as e:
 def fetch_data():
     """Fetch fresh data from football-data.co.uk (current season only)."""
     try:
-        df = pd.read_csv(DATA_URL, encoding='utf-8', on_bad_lines='skip')
+        # Always use current league's URL, not the global DATA_URL
+        current_url = get_data_url(CURRENT_LEAGUE, '2526')
+        df = pd.read_csv(current_url, encoding='utf-8', on_bad_lines='skip')
         df['Date'] = pd.to_datetime(df['Date'], dayfirst=True, errors='coerce')
         df = df.dropna(subset=['Date', 'HC', 'AC'])
         df = df.sort_values('Date').reset_index(drop=True)
@@ -940,6 +942,11 @@ def select_league():
         CURRENT_LEAGUE = league_code
         DATA_URL = get_data_url(league_code, '2526')
         
+        # Reload models for the new league
+        logger.info(f"Reloading models for league {league_code}")
+        load_models()
+        logger.info(f"Models reloaded: {len(models)} corner models, {len(goals_models)} goals models")
+        
         return jsonify({
             'success': True,
             'league': {
@@ -949,7 +956,11 @@ def select_league():
                 'flag': LEAGUES[CURRENT_LEAGUE]['flag'],
                 'iso': LEAGUES[CURRENT_LEAGUE]['iso']
             },
-            'message': f'Switched to {LEAGUES[CURRENT_LEAGUE]["name"]}'
+            'message': f'Switched to {LEAGUES[CURRENT_LEAGUE]["name"]}',
+            'models_loaded': {
+                'corners': len(models),
+                'goals': len(goals_models)
+            }
         })
     except Exception as e:
         return jsonify({'error': str(e)}), 500
