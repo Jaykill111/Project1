@@ -38,11 +38,7 @@ Thumbs.db
 *.log
 logs/
 
-# Ignore models - downloaded from HuggingFace at runtime
-api/models/
-models/
-*.pkl
-*.zip
+# Vercel
 .vercel
 
 # Notebooks and outputs
