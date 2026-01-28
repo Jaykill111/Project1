@@ -824,14 +824,18 @@
         
         setLoadingLeague(true);
         setError(null);
+        console.log(`[DEBUG] Changing league to ${leagueCode}`);
         
         try {
+          console.log(`[DEBUG] Calling /api/league/select with code: ${leagueCode}`);
           const res = await fetch(`${API_BASE}/api/league/select`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ league_code: leagueCode }),
           });
+          console.log(`[DEBUG] /api/league/select response status: ${res.status}`);
           const data = await res.json();
+          console.log(`[DEBUG] /api/league/select response:`, data);
           if (!res.ok) throw new Error(data.error);
           
           // Update current league
@@ -840,16 +844,21 @@
           localStorage.setItem('scope_selected_league', leagueCode);
           
           // Immediately fetch teams for new league (don't wait for useEffect)
+          console.log(`[DEBUG] Fetching teams for new league...`);
           setTeamsLoading(true);
           setHomeTeam("");
           setAwayTeam("");
           setResult(null);
           
           const teamsRes = await fetch(`${API_BASE}/api/teams`);
+          console.log(`[DEBUG] /api/teams response status: ${teamsRes.status}`);
           const teamsData = await teamsRes.json();
+          console.log(`[DEBUG] /api/teams data:`, teamsData);
           setTeams(teamsData.teams || []);
           setTeamsLoading(false);
+          console.log(`[DEBUG] Teams updated:`, teamsData.teams?.length, "teams loaded");
         } catch (err) {
+          console.error(`[ERROR] League change failed:`, err);
           setError(err.message);
           setTeamsLoading(false);
         } finally {
