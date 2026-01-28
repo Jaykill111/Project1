@@ -838,8 +838,20 @@
           const newLeague = leagues.find(l => l.code === leagueCode);
           setCurrentLeague(newLeague);
           localStorage.setItem('scope_selected_league', leagueCode);
+          
+          // Immediately fetch teams for new league (don't wait for useEffect)
+          setTeamsLoading(true);
+          setHomeTeam("");
+          setAwayTeam("");
+          setResult(null);
+          
+          const teamsRes = await fetch(`${API_BASE}/api/teams`);
+          const teamsData = await teamsRes.json();
+          setTeams(teamsData.teams || []);
+          setTeamsLoading(false);
         } catch (err) {
           setError(err.message);
+          setTeamsLoading(false);
         } finally {
           setLoadingLeague(false);
         }
