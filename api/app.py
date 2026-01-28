@@ -31,7 +31,14 @@ load_dotenv()
 
 app = Flask(__name__)
 CORS(app, resources={r"/api/*": {
-    "origins": ["https://corner.qnguyen3.dev", "http://localhost:3000", "http://localhost:5173", "http://localhost:8080"],
+    "origins": [
+        "https://corner.qnguyen3.dev",
+        "https://project1-six-flame.vercel.app",
+        "http://localhost:3000",
+        "http://localhost:5173",
+        "http://localhost:8000",
+        "http://localhost:8080"
+    ],
     "methods": ["GET", "POST", "OPTIONS"],
     "allow_headers": ["Content-Type"]
 }})
