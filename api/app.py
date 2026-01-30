@@ -35,6 +35,26 @@ load_dotenv()
 app = Flask(__name__)
 
 # ============================================================================
+# ERROR HANDLING DECORATOR
+# ============================================================================
+def handle_errors(f):
+    """Decorator to handle errors consistently across all endpoints."""
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        try:
+            return f(*args, **kwargs)
+        except ValueError as e:
+            logger.error(f"ValueError in {f.__name__}: {e}")
+            return jsonify({"error": f"Invalid input: {str(e)}"}), 400
+        except KeyError as e:
+            logger.error(f"KeyError in {f.__name__}: {e}")
+            return jsonify({"error": f"Missing parameter: {str(e)}"}), 400
+        except Exception as e:
+            logger.error(f"Unexpected error in {f.__name__}: {e}", exc_info=True)
+            return jsonify({"error": "Internal server error", "details": str(e) if os.environ.get('FLASK_ENV') == 'development' else None}), 500
+    return decorated_function
+
+# ============================================================================
 # DATA CACHE - Reduce CSV downloads
 # ============================================================================
 class DataCache:
@@ -68,6 +88,38 @@ class DataCache:
             self.cache.clear()
 
 data_cache = DataCache(ttl_seconds=300)  # 5 minute cache
+
+# ============================================================================
+# INPUT VALIDATION
+# ============================================================================
+def validate_team(team_name):
+    """Validate team name input."""
+    if not team_name:
+        raise ValueError("Team name cannot be empty")
+    if not isinstance(team_name, str):
+        raise ValueError("Team name must be a string")
+    if len(team_name) > 100:
+        raise ValueError("Team name too long (max 100 chars)")
+    return team_name.strip()
+
+def validate_threshold(threshold):
+    """Validate threshold input."""
+    try:
+        th = float(threshold)
+        if th <= 0:
+            raise ValueError("Threshold must be positive")
+        if th > 20:
+            raise ValueError("Threshold too high (max 20)")
+        return th
+    except (TypeError, ValueError):
+        raise ValueError(f"Invalid threshold: {threshold}")
+
+def validate_league(league_code):
+    """Validate league code."""
+    if league_code not in LEAGUES:
+        raise ValueError(f"Invalid league code: {league_code}. Valid codes: {list(LEAGUES.keys())}")
+    return league_code
+
 
 
 # Add cache control decorator
@@ -955,26 +1007,30 @@ def health_root():
     return jsonify({'status': 'ok'}), 200
 
 @app.route('/api/health')
+@handle_errors
 def health():
     """Health check endpoint."""
     return jsonify({
         'status': 'healthy',
         'models_loaded': len(models),
-        'thresholds': list(models.keys()),
+        'thresholds': sorted(list(models.keys())),
         'current_league': CURRENT_LEAGUE,
-        'cache_size': len(data_cache.cache)
+        'cache_size': len(data_cache.cache),
+        'timestamp': time.time()
     })
 
 
 @app.route('/api/cache/clear', methods=['POST'])
+@handle_errors
 def clear_cache():
     """Clear data cache (admin endpoint)."""
-    # In production, add authentication here
     data_cache.clear()
-    return jsonify({'message': 'Cache cleared', 'status': 'success'})
+    logger.warning("Cache cleared by request")
+    return jsonify({'message': 'Cache cleared successfully', 'status': 'success'})
 
 
 @app.route('/api/leagues')
+@handle_errors
 def get_leagues():
     """Get list of available leagues."""
     response = jsonify({
@@ -988,7 +1044,8 @@ def get_leagues():
             }
             for code, info in LEAGUES.items()
         ],
-        'current': CURRENT_LEAGUE
+        'current': CURRENT_LEAGUE,
+        'count': len(LEAGUES)
     })
     response.cache_control.max_age = 3600  # Cache for 1 hour
     response.cache_control.public = True
@@ -996,6 +1053,7 @@ def get_leagues():
 
 
 @app.route('/api/league/current')
+@handle_errors
 def get_current_league():
     """Get currently selected league."""
     return jsonify({
@@ -1053,58 +1111,54 @@ def select_league():
 
 
 @app.route('/api/teams')
+@handle_errors
 def get_teams():
     """Get list of current season teams."""
-    try:
-        df = fetch_data()
-        if df is None:
-            return jsonify({'error': 'Failed to fetch data'}), 500
+    df = fetch_data()
+    if df is None:
+        raise ValueError('Failed to fetch data from source')
 
-        teams = sorted(set(df['HomeTeam'].unique()) | set(df['AwayTeam'].unique()))
-        response = jsonify({
-            'teams': teams,
-            'league': CURRENT_LEAGUE  # Include league in response for cache validation
-        })
-        response.cache_control.max_age = 600  # Cache for 10 minutes
-        response.cache_control.public = True
-        response.headers['Vary'] = 'Cookie'  # Make cache league-aware
-        return response
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
+    teams = sorted(set(df['HomeTeam'].unique()) | set(df['AwayTeam'].unique()))
+    response = jsonify({
+        'teams': teams,
+        'league': CURRENT_LEAGUE,
+        'count': len(teams)
+    })
+    response.cache_control.max_age = 600  # Cache for 10 minutes
+    response.cache_control.public = True
+    response.headers['Vary'] = 'Cookie'
+    return response
 
 
 @app.route('/api/predict', methods=['POST'])
+@handle_errors
 def predict():
     """Run predictions for a match."""
-    try:
-        data = request.json
-        home_team = data.get('home_team')
-        away_team = data.get('away_team')
+    data = request.json or {}
+    home_team = validate_team(data.get('home_team', ''))
+    away_team = validate_team(data.get('away_team', ''))
 
-        if not home_team or not away_team:
-            return jsonify({'error': 'home_team and away_team are required'}), 400
+    if home_team == away_team:
+        raise ValueError('Home and away teams must be different')
 
-        if home_team == away_team:
-            return jsonify({'error': 'Home and away teams must be different'}), 400
+    # Fetch fresh data
+    df = fetch_data()
+    if df is None:
+        raise ValueError('Failed to fetch data from source')
 
-        # Fetch fresh data
-        df = fetch_data()
-        if df is None:
-            return jsonify({'error': 'Failed to fetch data'}), 500
+    # Validate teams
+    all_teams = set(df['HomeTeam'].unique()) | set(df['AwayTeam'].unique())
+    if home_team not in all_teams:
+        raise ValueError(f'Unknown team: {home_team}. Available teams: {", ".join(sorted(all_teams))}')
+    if away_team not in all_teams:
+        raise ValueError(f'Unknown team: {away_team}. Available teams: {", ".join(sorted(all_teams))}')
 
-        # Validate teams
-        all_teams = set(df['HomeTeam'].unique()) | set(df['AwayTeam'].unique())
-        if home_team not in all_teams:
-            return jsonify({'error': f'Unknown team: {home_team}'}), 400
-        if away_team not in all_teams:
-            return jsonify({'error': f'Unknown team: {away_team}'}), 400
+    # Run predictions
+    logger.info(f"Running predictions for: {home_team} vs {away_team}")
+    predictions = run_predictions(df, home_team, away_team)
 
-        # Run predictions
-        print(f"[*] Analyzing match: {home_team} vs {away_team}")
-        predictions = run_predictions(df, home_team, away_team)
-
-        # Fetch historical data for H2H (last 3 seasons)
-        df_historical = fetch_historical_data()
+    # Fetch historical data for H2H (last 3 seasons)
+    df_historical = fetch_historical_data()
 
         # Get statistics (use current season for team stats, historical for H2H)
         statistics = {
@@ -1135,38 +1189,35 @@ def predict():
 
 
 @app.route('/api/predict/goals', methods=['POST'])
+@handle_errors
 def predict_goals():
     """Run predictions for Total Goals in a match."""
-    try:
-        data = request.json
-        home_team = data.get('home_team')
-        away_team = data.get('away_team')
+    data = request.json or {}
+    home_team = validate_team(data.get('home_team', ''))
+    away_team = validate_team(data.get('away_team', ''))
 
-        if not home_team or not away_team:
-            return jsonify({'error': 'home_team and away_team are required'}), 400
+    if home_team == away_team:
+        raise ValueError('Home and away teams must be different')
 
-        if home_team == away_team:
-            return jsonify({'error': 'Home and away teams must be different'}), 400
+    # Fetch fresh data
+    df = fetch_data()
+    if df is None:
+        raise ValueError('Failed to fetch data from source')
 
-        # Fetch fresh data
-        df = fetch_data()
-        if df is None:
-            return jsonify({'error': 'Failed to fetch data'}), 500
+    # Validate teams
+    all_teams = set(df['HomeTeam'].unique()) | set(df['AwayTeam'].unique())
+    if home_team not in all_teams:
+        raise ValueError(f'Unknown team: {home_team}')
+    if away_team not in all_teams:
+        raise ValueError(f'Unknown team: {away_team}')
 
-        # Validate teams
-        all_teams = set(df['HomeTeam'].unique()) | set(df['AwayTeam'].unique())
-        if home_team not in all_teams:
-            return jsonify({'error': f'Unknown team: {home_team}'}), 400
-        if away_team not in all_teams:
-            return jsonify({'error': f'Unknown team: {away_team}'}), 400
+    # Run goals predictions
+    logger.info(f"Running goals predictions for: {home_team} vs {away_team}")
+    predictions = run_predictions_goals(df, home_team, away_team)
 
-        # Run goals predictions
-        print(f"[*] Analyzing goals for: {home_team} vs {away_team}")
-        predictions = run_predictions_goals(df, home_team, away_team)
-
-        # Get statistics
-        statistics = {
-            'home_team': get_team_statistics(df, home_team),
+    # Get statistics
+    statistics = {
+        'home_team': get_team_statistics(df, home_team),
             'away_team': get_team_statistics(df, away_team),
         }
 
