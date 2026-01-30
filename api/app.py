@@ -90,6 +90,41 @@ class DataCache:
 data_cache = DataCache(ttl_seconds=300)  # 5 minute cache
 
 # ============================================================================
+# FEATURES CACHE - Cache computed features per match
+# ============================================================================
+class FeaturesCache:
+    """Cache for computed match features to avoid recalculation."""
+    def __init__(self, ttl_seconds=300):
+        self.cache = {}
+        self.ttl = ttl_seconds
+    
+    def get(self, league, home_team, away_team, prediction_type='corners'):
+        """Get cached features for a match."""
+        key = f"{league}_{home_team}_{away_team}_{prediction_type}"
+        if key in self.cache:
+            data, timestamp = self.cache[key]
+            if time.time() - timestamp < self.ttl:
+                logger.info(f"Features cache HIT for {home_team} vs {away_team} ({prediction_type})")
+                return data
+            else:
+                del self.cache[key]
+                logger.info(f"Features cache EXPIRED for {home_team} vs {away_team} ({prediction_type})")
+        return None
+    
+    def set(self, league, home_team, away_team, value, prediction_type='corners'):
+        """Cache computed features for a match."""
+        key = f"{league}_{home_team}_{away_team}_{prediction_type}"
+        self.cache[key] = (value, time.time())
+        logger.info(f"Features cache SET for {home_team} vs {away_team} ({prediction_type})")
+    
+    def clear(self):
+        """Clear all cached features."""
+        self.cache.clear()
+        logger.info("Features cache cleared")
+
+features_cache = FeaturesCache(ttl_seconds=300)  # 5 minute cache
+
+# ============================================================================
 # INPUT VALIDATION
 # ============================================================================
 def validate_team(team_name):
@@ -450,6 +485,11 @@ def fetch_historical_data():
 
 def run_predictions(df, home_team, away_team):
     """Run predictions for all thresholds."""
+    # Check cache first
+    cached_predictions = features_cache.get(CURRENT_LEAGUE, home_team, away_team, 'corners')
+    if cached_predictions is not None:
+        return cached_predictions
+    
     predictions = {}
 
     for threshold, config in MODEL_CONFIGS.items():
@@ -504,12 +544,19 @@ def run_predictions(df, home_team, away_team):
                 'confidence_threshold': confidence,
                 'error': str(e)
             }
-
+    
+    # Cache the predictions
+    features_cache.set(CURRENT_LEAGUE, home_team, away_team, predictions, 'corners')
     return predictions
 
 
 def run_predictions_goals(df, home_team, away_team):
     """Run predictions for goals using classifiers (preferred) or regression model (fallback)."""
+    # Check cache first
+    cached_predictions = features_cache.get(CURRENT_LEAGUE, home_team, away_team, 'goals')
+    if cached_predictions is not None:
+        return cached_predictions
+    
     predictions = {}
 
     # Check if classifiers are loaded
@@ -664,6 +711,8 @@ def run_predictions_goals(df, home_team, away_team):
                 'error': 'No goals model loaded'
             }
     
+    # Cache the predictions
+    features_cache.set(CURRENT_LEAGUE, home_team, away_team, predictions, 'goals')
     return predictions
 
 
