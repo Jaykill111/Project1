@@ -1160,32 +1160,29 @@ def predict():
     # Fetch historical data for H2H (last 3 seasons)
     df_historical = fetch_historical_data()
 
-        # Get statistics (use current season for team stats, historical for H2H)
-        statistics = {
-            'home_team': get_team_statistics(df, home_team),
-            'away_team': get_team_statistics(df, away_team),
-            'head_to_head': get_head_to_head(df_historical if df_historical is not None else df, home_team, away_team)
-        }
+    # Get statistics (use current season for team stats, historical for H2H)
+    statistics = {
+        'home_team': get_team_statistics(df, home_team),
+        'away_team': get_team_statistics(df, away_team),
+        'head_to_head': get_head_to_head(df_historical if df_historical is not None else df, home_team, away_team)
+    }
 
-        # Get LLM assessment
-        llm_assessment = get_llm_assessment(home_team, away_team, predictions, statistics)
+    # Get LLM assessment
+    llm_assessment = get_llm_assessment(home_team, away_team, predictions, statistics)
 
-        # Prepare charts data
-        charts_data = prepare_charts_data(df, home_team, away_team, predictions)
+    # Prepare charts data
+    charts_data = prepare_charts_data(df, home_team, away_team, predictions)
 
-        return jsonify({
-            'match': {
-                'home_team': home_team,
-                'away_team': away_team
-            },
-            'predictions': predictions,
-            'statistics': statistics,
-            'llm_assessment': llm_assessment,
-            'charts_data': charts_data
-        })
-
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
+    return jsonify({
+        'match': {
+            'home_team': home_team,
+            'away_team': away_team
+        },
+        'predictions': predictions,
+        'statistics': statistics,
+        'llm_assessment': llm_assessment,
+        'charts_data': charts_data
+    })
 
 
 @app.route('/api/predict/goals', methods=['POST'])
@@ -1218,21 +1215,18 @@ def predict_goals():
     # Get statistics
     statistics = {
         'home_team': get_team_statistics(df, home_team),
-            'away_team': get_team_statistics(df, away_team),
-        }
+        'away_team': get_team_statistics(df, away_team),
+    }
 
-        return jsonify({
-            'match': {
-                'home_team': home_team,
-                'away_team': away_team,
-                'prediction_type': 'goals'
-            },
-            'predictions': predictions,
-            'statistics': statistics
-        })
-
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
+    return jsonify({
+        'match': {
+            'home_team': home_team,
+            'away_team': away_team,
+            'prediction_type': 'goals'
+        },
+        'predictions': predictions,
+        'statistics': statistics
+    })
 
 
 @app.route('/api/predict/all', methods=['POST'])
