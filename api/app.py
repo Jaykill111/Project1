@@ -7,6 +7,7 @@ import os
 import logging
 from functools import wraps
 from datetime import timedelta
+import time
 
 # Setup logging
 logging.basicConfig(
@@ -32,6 +33,42 @@ from features import FEATURES, compute_features_for_match, compute_features_for_
 load_dotenv()
 
 app = Flask(__name__)
+
+# ============================================================================
+# DATA CACHE - Reduce CSV downloads
+# ============================================================================
+class DataCache:
+    """In-memory cache for CSV data with TTL (Time To Live)."""
+    def __init__(self, ttl_seconds=300):  # Cache for 5 minutes
+        self.cache = {}
+        self.ttl = ttl_seconds
+    
+    def get(self, key):
+        """Get cached data if not expired."""
+        if key in self.cache:
+            data, timestamp = self.cache[key]
+            if time.time() - timestamp < self.ttl:
+                logger.info(f"Cache HIT for {key}")
+                return data
+            else:
+                del self.cache[key]
+                logger.info(f"Cache EXPIRED for {key}")
+        return None
+    
+    def set(self, key, value):
+        """Cache data with current timestamp."""
+        self.cache[key] = (value, time.time())
+        logger.info(f"Cache SET for {key}")
+    
+    def clear(self, key=None):
+        """Clear specific key or all cache."""
+        if key:
+            self.cache.pop(key, None)
+        else:
+            self.cache.clear()
+
+data_cache = DataCache(ttl_seconds=300)  # 5 minute cache
+
 
 # Add cache control decorator
 def add_cache_header(max_age=300):
@@ -302,6 +339,12 @@ except Exception as e:
 
 def fetch_data():
     """Fetch fresh data from football-data.co.uk (current season only)."""
+    # Check cache first
+    cache_key = f"data_{CURRENT_LEAGUE}_2526"
+    cached_df = data_cache.get(cache_key)
+    if cached_df is not None:
+        return cached_df
+    
     try:
         # Always use current league's URL, not the global DATA_URL
         current_url = get_data_url(CURRENT_LEAGUE, '2526')
@@ -310,6 +353,9 @@ def fetch_data():
         df = df.dropna(subset=['Date', 'HC', 'AC'])
         df = df.sort_values('Date').reset_index(drop=True)
         df['TotalCorners'] = df['HC'] + df['AC']
+        
+        # Cache the result
+        data_cache.set(cache_key, df)
         return df
     except Exception as e:
         print(f"Error fetching data: {e}")
@@ -318,6 +364,12 @@ def fetch_data():
 
 def fetch_historical_data():
     """Fetch multiple seasons for H2H analysis."""
+    # Check cache first
+    cache_key = f"historical_{CURRENT_LEAGUE}"
+    cached_df = data_cache.get(cache_key)
+    if cached_df is not None:
+        return cached_df
+    
     try:
         dfs = []
         for season in HISTORICAL_SEASONS:
@@ -335,6 +387,9 @@ def fetch_historical_data():
         df = df.dropna(subset=['Date', 'HC', 'AC'])
         df = df.sort_values('Date').reset_index(drop=True)
         df['TotalCorners'] = df['HC'] + df['AC']
+        
+        # Cache the result
+        data_cache.set(cache_key, df)
         return df
     except Exception as e:
         print(f"Error fetching historical data: {e}")
@@ -906,8 +961,17 @@ def health():
         'status': 'healthy',
         'models_loaded': len(models),
         'thresholds': list(models.keys()),
-        'current_league': CURRENT_LEAGUE
+        'current_league': CURRENT_LEAGUE,
+        'cache_size': len(data_cache.cache)
     })
+
+
+@app.route('/api/cache/clear', methods=['POST'])
+def clear_cache():
+    """Clear data cache (admin endpoint)."""
+    # In production, add authentication here
+    data_cache.clear()
+    return jsonify({'message': 'Cache cleared', 'status': 'success'})
 
 
 @app.route('/api/leagues')
