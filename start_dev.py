@@ -75,8 +75,8 @@ def main():
     print("\n[..] Waiting for services to initialize...")
     time.sleep(3)
     
-    print("--> Opening http://localhost:3000 in your browser...")
-    webbrowser.open("http://localhost:3000")
+    print("--> Opening http://localhost:3000/index.html in your browser...")
+    webbrowser.open("http://localhost:3000/index.html")
     
     print("\n[Press Ctrl+C to stop all services]\n")
     
