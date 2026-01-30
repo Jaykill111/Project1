@@ -837,6 +837,9 @@
       const handleSelectLeague = async (leagueCode) => {
         if (leagueCode === currentLeague?.code) return;
         
+        // IMMEDIATELY clear predictions and show loading state
+        setResult(null);
+        setLoading(true);
         setLoadingLeague(true);
         setError(null);
         console.log(`[DEBUG] Changing league to ${leagueCode}`);
@@ -858,12 +861,11 @@
           setCurrentLeague(newLeague);
           localStorage.setItem('scope_selected_league', leagueCode);
           
-          // Immediately fetch teams for new league (don't wait for useEffect)
+          // Clear selections and fetch teams for new league
           console.log(`[DEBUG] Fetching teams for new league...`);
           setTeamsLoading(true);
           setHomeTeam("");
           setAwayTeam("");
-          setResult(null);
           
           // Add cache buster to force fresh data
           const cacheBuster = `?t=${Date.now()}`;
@@ -881,6 +883,7 @@
           setTeamsLoading(false);
         } finally {
           setLoadingLeague(false);
+          setLoading(false);
         }
       };
 
