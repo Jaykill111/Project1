@@ -50,8 +50,9 @@ def compute_features(df, n=5):
         # Fouls
         'home_fouls_avg', 'away_fouls_avg',
     ]
-    for col in feature_cols:
-        df[col] = np.nan
+    
+    # Initialize feature dictionaries to collect all values at once
+    feature_data = {col: {} for col in feature_cols}
 
     all_teams = set(df['HomeTeam'].unique()) | set(df['AwayTeam'].unique())
     for team in all_teams:
@@ -61,59 +62,67 @@ def compute_features(df, n=5):
         for i, idx in enumerate(home_idx):
             if i >= n:
                 prev = df.loc[home_idx[i-n:i]]
-                df.loc[idx, 'home_corners_avg'] = prev['HC'].mean()
-                df.loc[idx, 'home_corners_conceded'] = prev['AC'].mean()
-                df.loc[idx, 'home_shots_avg'] = prev['HS'].mean()
-                df.loc[idx, 'home_sot_avg'] = prev['HST'].mean()
+                feature_data['home_corners_avg'][idx] = prev['HC'].mean()
+                feature_data['home_corners_conceded'][idx] = prev['AC'].mean()
+                feature_data['home_shots_avg'][idx] = prev['HS'].mean()
+                feature_data['home_sot_avg'][idx] = prev['HST'].mean()
 
                 # Shot accuracy
                 shots = prev['HS'].sum()
                 if shots > 0:
-                    df.loc[idx, 'home_shot_accuracy'] = prev['HST'].sum() / shots
-                    df.loc[idx, 'home_corners_per_shot'] = prev['HC'].sum() / shots
+                    feature_data['home_shot_accuracy'][idx] = prev['HST'].sum() / shots
+                    feature_data['home_corners_per_shot'][idx] = prev['HC'].sum() / shots
 
                 # Yellow cards
                 if 'HY' in prev.columns:
-                    df.loc[idx, 'home_yellows_avg'] = prev['HY'].mean()
+                    feature_data['home_yellows_avg'][idx] = prev['HY'].mean()
 
                 # Goal difference
-                df.loc[idx, 'home_goal_diff'] = (prev['FTHG'] - prev['FTAG']).mean()
+                feature_data['home_goal_diff'][idx] = (prev['FTHG'] - prev['FTAG']).mean()
 
                 # Fouls
                 if 'HF' in prev.columns:
-                    df.loc[idx, 'home_fouls_avg'] = prev['HF'].mean()
+                    feature_data['home_fouls_avg'][idx] = prev['HF'].mean()
 
         for i, idx in enumerate(away_idx):
             if i >= n:
                 prev = df.loc[away_idx[i-n:i]]
-                df.loc[idx, 'away_corners_avg'] = prev['AC'].mean()
-                df.loc[idx, 'away_corners_conceded'] = prev['HC'].mean()
-                df.loc[idx, 'away_shots_avg'] = prev['AS'].mean()
-                df.loc[idx, 'away_sot_avg'] = prev['AST'].mean()
+                feature_data['away_corners_avg'][idx] = prev['AC'].mean()
+                feature_data['away_corners_conceded'][idx] = prev['HC'].mean()
+                feature_data['away_shots_avg'][idx] = prev['AS'].mean()
+                feature_data['away_sot_avg'][idx] = prev['AST'].mean()
 
                 # Shot accuracy
                 shots = prev['AS'].sum()
                 if shots > 0:
-                    df.loc[idx, 'away_shot_accuracy'] = prev['AST'].sum() / shots
-                    df.loc[idx, 'away_corners_per_shot'] = prev['AC'].sum() / shots
+                    feature_data['away_shot_accuracy'][idx] = prev['AST'].sum() / shots
+                    feature_data['away_corners_per_shot'][idx] = prev['AC'].sum() / shots
 
                 # Yellow cards
                 if 'AY' in prev.columns:
-                    df.loc[idx, 'away_yellows_avg'] = prev['AY'].mean()
+                    feature_data['away_yellows_avg'][idx] = prev['AY'].mean()
 
                 # Goal difference
-                df.loc[idx, 'away_goal_diff'] = (prev['FTAG'] - prev['FTHG']).mean()
+                feature_data['away_goal_diff'][idx] = (prev['FTAG'] - prev['FTHG']).mean()
 
                 # Fouls
                 if 'AF' in prev.columns:
-                    df.loc[idx, 'away_fouls_avg'] = prev['AF'].mean()
+                    feature_data['away_fouls_avg'][idx] = prev['AF'].mean()
 
-    # Combined features (non-redundant)
-    df['total_corners_expected'] = df['home_corners_avg'] + df['away_corners_avg']
-    df['total_shots_expected'] = df['home_shots_avg'] + df['away_shots_avg']
-    df['corner_efficiency_combined'] = df['home_corners_per_shot'].fillna(0) + df['away_corners_per_shot'].fillna(0)
-    df['aggression_combined'] = df['home_yellows_avg'].fillna(0) + df['away_yellows_avg'].fillna(0)
-    df['form_diff'] = df['home_goal_diff'].fillna(0) - df['away_goal_diff'].fillna(0)
+    # Assign all features at once to avoid DataFrame fragmentation
+    for col, values in feature_data.items():
+        df[col] = pd.Series(values, dtype='float64')
+
+    # Combined features - use pd.concat to add multiple columns at once
+    combined_features = pd.DataFrame({
+        'total_corners_expected': df['home_corners_avg'] + df['away_corners_avg'],
+        'total_shots_expected': df['home_shots_avg'] + df['away_shots_avg'],
+        'corner_efficiency_combined': df['home_corners_per_shot'].fillna(0) + df['away_corners_per_shot'].fillna(0),
+        'aggression_combined': df['home_yellows_avg'].fillna(0) + df['away_yellows_avg'].fillna(0),
+        'form_diff': df['home_goal_diff'].fillna(0) - df['away_goal_diff'].fillna(0)
+    }, index=df.index)
+    
+    df = pd.concat([df, combined_features], axis=1)
     return df
 
 
