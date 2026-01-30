@@ -837,10 +837,12 @@
       const handleSelectLeague = async (leagueCode) => {
         if (leagueCode === currentLeague?.code) return;
         
-        // IMMEDIATELY clear predictions and show loading state
+        // IMMEDIATELY clear predictions and selections
         setResult(null);
-        setLoading(true);
+        setHomeTeam("");
+        setAwayTeam("");
         setLoadingLeague(true);
+        setTeamsLoading(true);
         setError(null);
         console.log(`[DEBUG] Changing league to ${leagueCode}`);
         
@@ -863,9 +865,6 @@
           
           // Clear selections and fetch teams for new league
           console.log(`[DEBUG] Fetching teams for new league...`);
-          setTeamsLoading(true);
-          setHomeTeam("");
-          setAwayTeam("");
           
           // Add cache buster to force fresh data
           const cacheBuster = `?t=${Date.now()}`;
@@ -883,7 +882,7 @@
           setTeamsLoading(false);
         } finally {
           setLoadingLeague(false);
-          setLoading(false);
+          setTeamsLoading(false);
         }
       };
 
