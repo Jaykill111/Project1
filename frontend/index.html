@@ -189,6 +189,7 @@
   <div id="root"></div>
 
   <script type="text/babel">
+    // Use HTTPS with Railway backend
     const API_BASE =
       window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1"
         ? "http://localhost:5000"
@@ -204,7 +205,12 @@
       useEffect(() => {
         const fetchMatches = async () => {
           try {
-            const response = await fetch(`${API_BASE}/api/upcoming-matches`);
+            const response = await fetch(`${API_BASE}/api/upcoming-matches`, {
+              headers: { "Content-Type": "application/json" },
+              mode: 'cors',
+              credentials: 'omit'
+            });
+            if (!response.ok) throw new Error(`HTTP ${response.status}`);
             const data = await response.json();
             // Filter only LIVE matches
             const liveMatches = data.matches?.filter(m => m.status === 'LIVE') || [];
@@ -287,7 +293,12 @@
       useEffect(() => {
         const fetchUpcoming = async () => {
           try {
-            const response = await fetch(`${API_BASE}/api/upcoming-matches`);
+            const response = await fetch(`${API_BASE}/api/upcoming-matches`, {
+              headers: { "Content-Type": "application/json" },
+              mode: 'cors',
+              credentials: 'omit'
+            });
+            if (!response.ok) throw new Error(`HTTP ${response.status}`);
             const data = await response.json();
             // Filter only UPCOMING matches
             const upcomingMatches = data.matches?.filter(m => m.status === 'UPCOMING') || [];
@@ -974,8 +985,15 @@
       useEffect(() => {
         const storedLeague = localStorage.getItem('scope_selected_league');
 
-        fetch(`${API_BASE}/api/leagues`)
-          .then((res) => res.json())
+        fetch(`${API_BASE}/api/leagues`, { 
+          headers: { "Content-Type": "application/json" },
+          mode: 'cors',
+          credentials: 'omit'
+        })
+          .then((res) => {
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            return res.json();
+          })
           .then(async (data) => {
             const availableLeagues = data.leagues || [];
             setLeagues(availableLeagues);
@@ -996,7 +1014,10 @@
                   method: "POST",
                   headers: { "Content-Type": "application/json" },
                   body: JSON.stringify({ league_code: storedLeague }),
+                  mode: 'cors',
+                  credentials: 'omit'
                 });
+                if (!switchRes.ok) throw new Error(`HTTP ${switchRes.status}`);
                 const switchData = await switchRes.json();
                 console.log(`[DEBUG] Backend switch complete:`, switchData);
                 
@@ -1022,7 +1043,12 @@
         try {
           // Add timestamp to bypass HTTP cache after league change
           const cacheBuster = `?t=${Date.now()}`;
-          const res = await fetch(`${API_BASE}/api/teams${cacheBuster}`);
+          const res = await fetch(`${API_BASE}/api/teams${cacheBuster}`, {
+            headers: { "Content-Type": "application/json" },
+            mode: 'cors',
+            credentials: 'omit'
+          });
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
           const data = await res.json();
           setTeams(data.teams || []);
         } catch (err) {
@@ -1069,7 +1095,12 @@
           
           // Add cache buster to force fresh data
           const cacheBuster = `?t=${Date.now()}`;
-          const teamsRes = await fetch(`${API_BASE}/api/teams${cacheBuster}`);
+          const teamsRes = await fetch(`${API_BASE}/api/teams${cacheBuster}`, {
+            headers: { "Content-Type": "application/json" },
+            mode: 'cors',
+            credentials: 'omit'
+          });
+          if (!teamsRes.ok) throw new Error(`HTTP ${teamsRes.status}`);
           console.log(`[DEBUG] /api/teams response status: ${teamsRes.status}`);
           const teamsData = await teamsRes.json();
           console.log(`[DEBUG] /api/teams data:`, teamsData);
