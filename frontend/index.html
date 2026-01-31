@@ -145,6 +145,43 @@
     .result-L {
       background: #c0392b;
     }
+
+    /* Marquee/Ticker styles */
+    .ticker-wrapper {
+      background: linear-gradient(90deg, #0a0a0a 0%, #1a3d1a 50%, #0a0a0a 100%);
+      border-bottom: 2px solid rgba(46, 204, 113, 0.5);
+      border-top: 1px solid rgba(46, 204, 113, 0.2);
+      overflow: hidden;
+      position: relative;
+      box-shadow: 0 4px 20px rgba(46, 204, 113, 0.1);
+    }
+
+    .ticker {
+      display: flex;
+      animation: scroll 26.2s linear infinite;
+      white-space: nowrap;
+    }
+
+    .ticker-item {
+      display: inline-flex;
+      align-items: center;
+      padding: 0 3rem;
+      border-right: 1px solid rgba(46, 204, 113, 0.3);
+      min-width: fit-content;
+    }
+
+    @keyframes scroll {
+      0% {
+        transform: translateX(0);
+      }
+      100% {
+        transform: translateX(-50%);
+      }
+    }
+
+    .ticker:hover {
+      animation-play-state: paused;
+    }
   </style>
 </head>
 
@@ -158,6 +195,170 @@
         : "https://web-production-a7244.up.railway.app";
 
     const { useState, useEffect, useMemo } = React;
+
+    // Live Matches Ticker Component
+    const LiveMatchesTicker = () => {
+      const [matches, setMatches] = useState([]);
+      const [loading, setLoading] = useState(true);
+
+      useEffect(() => {
+        const fetchMatches = async () => {
+          try {
+            const response = await fetch(`${API_BASE}/api/upcoming-matches`);
+            const data = await response.json();
+            // Filter only LIVE matches
+            const liveMatches = data.matches?.filter(m => m.status === 'LIVE') || [];
+            setMatches(liveMatches);
+          } catch (error) {
+            console.error('Failed to fetch live matches:', error);
+          } finally {
+            setLoading(false);
+          }
+        };
+
+        fetchMatches();
+        const interval = setInterval(fetchMatches, 30 * 1000); // Update every 30s for live
+        return () => clearInterval(interval);
+      }, []);
+
+      if (loading) {
+        return (
+          <div className="ticker-wrapper py-3 bg-gradient-to-r from-red-900/20 via-red-800/30 to-red-900/20 border-b-2 border-red-500/50">
+            <div className="text-center">
+              <span className="font-mono text-sm text-gray-400">🔴 Loading live matches...</span>
+            </div>
+          </div>
+        );
+      }
+
+      if (matches.length === 0) {
+        return (
+          <div className="ticker-wrapper py-2 bg-gradient-to-r from-red-900/20 via-red-800/30 to-red-900/20 border-b-2 border-red-500/50">
+            <div className="ticker">
+              <div className="ticker-item">
+                <span className="font-mono text-sm text-gray-400">🔴 No live matches at the moment</span>
+              </div>
+              <div className="ticker-item">
+                <span className="font-mono text-sm text-red-400">⚽ Check upcoming matches below!</span>
+              </div>
+              <div className="ticker-item">
+                <span className="font-mono text-sm text-gray-400">🔴 No live matches at the moment</span>
+              </div>
+              <div className="ticker-item">
+                <span className="font-mono text-sm text-red-400">⚽ Check upcoming matches below!</span>
+              </div>
+            </div>
+          </div>
+        );
+      }
+
+      const displayMatches = [...matches, ...matches];
+
+      return (
+        <div className="ticker-wrapper py-3 bg-gradient-to-r from-red-900/20 via-red-800/30 to-red-900/20 border-b-2 border-red-500/50">
+          <div className="ticker">
+            {displayMatches.map((match, idx) => (
+              <div key={idx} className="ticker-item">
+                <span className="inline-flex items-center px-2 py-1 rounded bg-red-600 text-white text-xs font-bold mr-2 animate-pulse">
+                  ● LIVE
+                </span>
+                <span className={`fi fi-${match.league_iso} text-xl mr-2`}></span>
+                <span className="font-mono text-xs text-gray-400 mr-2 uppercase">{match.league_name}</span>
+                <span className="text-white font-semibold">{match.home_team}</span>
+                {match.score ? (
+                  <span className="text-red-400 mx-2 font-bold text-lg">{match.score}</span>
+                ) : (
+                  <span className="text-red-300 mx-2 font-bold">vs</span>
+                )}
+                <span className="text-white font-semibold">{match.away_team}</span>
+                <span className="text-red-400 font-bold ml-3">{match.time_info}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      );
+    };
+
+    // Upcoming Matches Ticker Component
+    const UpcomingMatchesTicker = () => {
+      const [matches, setMatches] = useState([]);
+      const [loading, setLoading] = useState(true);
+
+      useEffect(() => {
+        const fetchUpcoming = async () => {
+          try {
+            const response = await fetch(`${API_BASE}/api/upcoming-matches`);
+            const data = await response.json();
+            // Filter only UPCOMING matches
+            const upcomingMatches = data.matches?.filter(m => m.status === 'UPCOMING') || [];
+            setMatches(upcomingMatches);
+          } catch (error) {
+            console.error('Failed to fetch upcoming matches:', error);
+          } finally {
+            setLoading(false);
+          }
+        };
+
+        fetchUpcoming();
+        const interval = setInterval(fetchUpcoming, 60 * 1000); // Update every 60s
+        return () => clearInterval(interval);
+      }, []);
+
+      // Show message if no matches
+      if (loading) {
+        return (
+          <div className="ticker-wrapper py-2 bg-gradient-to-r from-pitch via-turf to-pitch border-b-2 border-grass/30">
+            <div className="text-center">
+              <span className="font-mono text-sm text-gray-400">📅 Loading upcoming matches... (Next 24h - Giờ VN)</span>
+            </div>
+          </div>
+        );
+      }
+
+      if (matches.length === 0) {
+        return (
+          <div className="ticker-wrapper py-2 bg-gradient-to-r from-pitch via-turf to-pitch border-b-2 border-grass/30">
+            <div className="ticker">
+              <div className="ticker-item">
+                <span className="font-mono text-sm text-gray-400">📅 No upcoming matches in next 24h</span>
+              </div>
+              <div className="ticker-item">
+                <span className="font-mono text-sm text-grass">⚽ EPL • La Liga • Serie A • Bundesliga • Ligue 1</span>
+              </div>
+              <div className="ticker-item">
+                <span className="font-mono text-sm text-gray-400">📅 No upcoming matches in next 24h</span>
+              </div>
+              <div className="ticker-item">
+                <span className="font-mono text-sm text-grass">⚽ EPL • La Liga • Serie A • Bundesliga • Ligue 1</span>
+              </div>
+            </div>
+          </div>
+        );
+      }
+
+      // Duplicate matches for seamless loop
+      const displayMatches = [...matches, ...matches];
+
+      return (
+        <div className="ticker-wrapper py-2 bg-gradient-to-r from-pitch via-turf to-pitch border-b-2 border-grass/30">
+          <div className="ticker">
+            {displayMatches.map((match, idx) => (
+              <div key={idx} className="ticker-item">
+                <span className="inline-flex items-center px-2 py-1 rounded bg-yellow-600 text-black text-xs font-bold mr-2">
+                  📅 UPCOMING
+                </span>
+                <span className={`fi fi-${match.league_iso} text-xl mr-2`}></span>
+                <span className="font-mono text-xs text-gray-400 mr-2 uppercase">{match.league_name}</span>
+                <span className="text-white font-semibold">{match.home_team}</span>
+                <span className="text-grass mx-2 font-bold">vs</span>
+                <span className="text-white font-semibold">{match.away_team}</span>
+                <span className="text-yellow-400 font-semibold text-sm ml-3">{match.time_info}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      );
+    };
 
     // Extract chosen bet from LLM assessment
     const extractChosenBet = (assessment) => {
@@ -917,6 +1118,12 @@
             onSelectLeague={handleSelectLeague}
             loadingLeague={loadingLeague}
           />
+          
+          {/* Live Matches Ticker - Red theme */}
+          <LiveMatchesTicker />
+          
+          {/* Upcoming Matches Ticker - Green theme */}
+          <UpcomingMatchesTicker />
 
           {teamsLoading ? (
             <Loading />

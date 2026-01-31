@@ -89,6 +89,9 @@ class DataCache:
 
 data_cache = DataCache(ttl_seconds=300)  # 5 minute cache
 
+# Shorter cache for live match data from Odds API
+live_matches_cache = DataCache(ttl_seconds=60)  # 1 minute cache for live data
+
 # ============================================================================
 # FEATURES CACHE - Cache computed features per match
 # ============================================================================
@@ -208,6 +211,18 @@ DATA_URL = get_data_url(CURRENT_LEAGUE, '2526')
 HISTORICAL_SEASONS = ['2324', '2425', '2526']  # Last 3 seasons for H2H
 OPENROUTER_API_KEY = os.environ.get('OPENROUTER_API_KEY')
 OPENROUTER_URL = 'https://openrouter.ai/api/v1/chat/completions'
+
+# The Odds API configuration
+ODDS_API_KEY = os.environ.get('ODDS_API_KEY', 'e64281ebf98d1f45a0308d35ef65e6b5')  # Free tier key
+ODDS_API_BASE = 'https://api.the-odds-api.com/v4'
+ODDS_API_SPORTS = {
+    'E0': 'soccer_epl',
+    'SP1': 'soccer_spain_la_liga',
+    'I1': 'soccer_italy_serie_a',
+    'D1': 'soccer_germany_bundesliga',
+    'F1': 'soccer_france_ligue_one'
+}
+
 # Primary and fallback LLM models (configurable via .env)
 # Google Gemini support removed - using OpenRouter only
 # LLM_MODEL = os.environ.get('LLM_MODEL', 'google/gemini-2.0-flash-exp:free')
@@ -1076,6 +1091,154 @@ def clear_cache():
     data_cache.clear()
     logger.warning("Cache cleared by request")
     return jsonify({'message': 'Cache cleared successfully', 'status': 'success'})
+
+
+@app.route('/api/upcoming-matches')
+@handle_errors
+def get_upcoming_matches():
+    """Get LIVE and upcoming matches from The Odds API for all leagues."""
+    try:
+        from datetime import datetime, timedelta
+        
+        all_matches = []
+        # Use Vietnam timezone (UTC+7)
+        vietnam_offset = timedelta(hours=7)
+        current_time = datetime.utcnow() + vietnam_offset
+        
+        # Fetch from The Odds API for each league
+        for league_code, sport_key in ODDS_API_SPORTS.items():
+            try:
+                # Check cache first for RAW API data (not filtered)
+                cache_key = f"odds_api_raw_{league_code}"
+                cached_raw_data = live_matches_cache.get(cache_key)
+                
+                league_info = LEAGUES.get(league_code, {})
+                
+                # Fetch from The Odds API if not cached
+                if cached_raw_data is None:
+                    url = f"{ODDS_API_BASE}/sports/{sport_key}/scores/"
+                    params = {
+                        'apiKey': ODDS_API_KEY,
+                        'daysFrom': 1  # Get matches from last 24h to next 24h
+                    }
+                    
+                    response = requests.get(url, params=params, timeout=10)
+                    if response.status_code != 200:
+                        logger.warning(f"Odds API error for {league_code}: {response.status_code}")
+                        continue
+                    
+                    data = response.json()
+                    logger.info(f"Fetched {len(data)} matches from Odds API for {league_code}")
+                    
+                    # Cache the RAW data from API
+                    live_matches_cache.set(cache_key, data)
+                else:
+                    data = cached_raw_data
+                    logger.info(f"Using cached data for {league_code} ({len(data)} matches)")
+                
+                league_matches = []
+                
+                for match in data:
+                    try:
+                        # Parse match time (comes in UTC from API)
+                        commence_time_utc = datetime.fromisoformat(match['commence_time'].replace('Z', '+00:00'))
+                        # Convert to Vietnam time (UTC+7)
+                        commence_time = commence_time_utc.replace(tzinfo=None) + vietnam_offset
+                        
+                        # Check if match is completed
+                        is_completed = match.get('completed', False)
+                        
+                        # Determine status
+                        match_end = commence_time + timedelta(hours=2)
+                        time_diff = commence_time - current_time
+                        
+                        status = None
+                        time_info = ''
+                        
+                        # LIVE: started but not completed (and not marked as completed)
+                        if not is_completed and commence_time <= current_time < match_end:
+                            status = 'LIVE'
+                            elapsed = current_time - commence_time
+                            minutes = int(elapsed.total_seconds() / 60)
+                            # Cap at 90 minutes for display
+                            if minutes > 90:
+                                minutes = 90
+                            time_info = f"{minutes}'"
+                        # UPCOMING: not started yet and within next 24 hours
+                        elif not is_completed and current_time < commence_time and time_diff < timedelta(hours=24):
+                            status = 'UPCOMING'
+                            hours = int(time_diff.total_seconds() / 3600)
+                            minutes = int((time_diff.total_seconds() % 3600) / 60)
+                            if hours > 0:
+                                time_info = f"in {hours}h {minutes}m"
+                            else:
+                                time_info = f"in {minutes}m"
+                        
+                        # Debug logging
+                        if status:
+                            logger.info(f"Match: {match['home_team']} vs {match['away_team']} - Status: {status} - Time: {commence_time} - Completed: {is_completed}")
+                        
+                        if status:
+                            # Get scores if available - match by team name, not index!
+                            scores = match.get('scores')
+                            score_text = ''
+                            if scores and len(scores) >= 2:
+                                # Find scores by matching team names
+                                home_score = None
+                                away_score = None
+                                for score_entry in scores:
+                                    if score_entry.get('name') == match['home_team']:
+                                        home_score = score_entry.get('score', '')
+                                    elif score_entry.get('name') == match['away_team']:
+                                        away_score = score_entry.get('score', '')
+                                
+                                if home_score and away_score:
+                                    score_text = f"{home_score}-{away_score}"
+                            
+                            match_data = {
+                                'league_code': league_code,
+                                'league_name': league_info.get('name', sport_key),
+                                'league_iso': league_info.get('iso', 'gb-eng'),
+                                'home_team': match['home_team'],
+                                'away_team': match['away_team'],
+                                'date': commence_time.strftime('%Y-%m-%d %H:%M'),
+                                'status': status,
+                                'time_info': time_info,
+                                'score': score_text,
+                                'match_id': match.get('id', '')
+                            }
+                            league_matches.append(match_data)
+                    
+                    except Exception as e:
+                        logger.error(f"Error parsing match: {e}")
+                        continue
+                
+                # Don't cache filtered results, only raw data (already cached above)
+                logger.info(f"Added {len(league_matches)} matches for {league_code} after filtering")
+                all_matches.extend(league_matches)
+                
+            except Exception as e:
+                logger.error(f"Error fetching from Odds API for {league_code}: {e}")
+                continue
+        
+        # Sort: LIVE first, then by date
+        all_matches.sort(key=lambda x: (0 if x['status'] == 'LIVE' else 1, x.get('date', 'ZZZ')))
+        
+        logger.info(f"Fetched {len(all_matches)} matches from The Odds API ({sum(1 for m in all_matches if m['status'] == 'LIVE')} live)")
+        
+        return jsonify({
+            'count': len(all_matches),
+            'live_count': sum(1 for m in all_matches if m['status'] == 'LIVE'),
+            'upcoming_count': sum(1 for m in all_matches if m['status'] == 'UPCOMING'),
+            'matches': all_matches,
+            'timestamp': current_time.isoformat(),
+            'timezone': 'Asia/Ho_Chi_Minh (UTC+7)',
+            'source': 'The Odds API'
+        })
+        
+    except Exception as e:
+        logger.error(f"Error in get_upcoming_matches: {e}", exc_info=True)
+        return jsonify({'error': str(e), 'matches': [], 'source': 'The Odds API'}), 500
 
 
 @app.route('/api/leagues')
